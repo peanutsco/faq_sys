@@ -1,36 +1,27 @@
-import { getEmbedding } from '../utils/embed.js';
-import { searchRelevantDocs } from '../utils/search.js';
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from "openai";
+import { findRelevantContext } from "../utils/search.js";
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
 export default async function handler(req, res) {
-  const { question } = req.query;
-
-  if (!question) return res.status(400).json({ error: '質問がありません' });
-
   try {
-    // 1. 質問をベクトル化
-    const queryEmbedding = await getEmbedding(question);
+    const { question } = req.query;
+    if (!question) return res.status(400).json({ error: "question is required" });
 
-    // 2. 類似ドキュメント検索（ここではモック）
-    const contextText = await searchRelevantDocs(queryEmbedding);
+    const context = await findRelevantContext(question);
+    const prompt = `以下の情報に基づいて質問に答えてください。\n\n${context}\n\n質問: ${question}`;
 
-    // 3. ChatGPT にプロンプトとして送信
-    const chatCompletion = await openai.createChatCompletion({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: '以下の情報に基づいて質問に答えてください：' + contextText },
-        { role: 'user', content: question },
-      ],
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2
     });
 
-    const answer = chatCompletion.data.choices[0].message.content;
-    res.status(200).json({ answer });
+    res.status(200).json({ answer: completion.choices[0].message.content });
   } catch (e) {
+    console.error("API error:", e);
     res.status(500).json({ error: e.message });
   }
 }

@@ -1,22 +1,25 @@
-// 🔧 簡易ベクトル検索：JSONファイル or Supabaseなどを利用可能
+import fs from "fs";
+import path from "path";
+import { getEmbedding } from "./embed.js";
 
-import fs from 'fs';
-import path from 'path';
+const DOC_PATH = path.join(process.cwd(), "data", "docs.json");
 
-// ダミーデータ読み込み（実際はSupabaseやPineconeに置き換え）
-const dataPath = path.resolve(process.cwd(), 'data/docs.json');
-const documents = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+function cosineSimilarity(vecA, vecB) {
+  const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
+  const normA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const normB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+  return dotProduct / (normA * normB);
+}
 
-export async function searchRelevantDocs(queryEmbedding) {
-  // 超簡易なコサイン類似度計算（高速化・最適化は別途）
-  let bestDoc = documents[0];
-  let bestScore = -1;
-  for (const doc of documents) {
-    const dot = doc.embedding.reduce((sum, val, i) => sum + val * queryEmbedding[i], 0);
-    if (dot > bestScore) {
-      bestScore = dot;
-      bestDoc = doc;
-    }
-  }
-  return bestDoc.text;
+export async function findRelevantContext(query) {
+  const docs = JSON.parse(fs.readFileSync(DOC_PATH, "utf-8"));
+  const queryEmbedding = await getEmbedding(query);
+
+  const scoredDocs = docs.map(doc => ({
+    ...doc,
+    score: cosineSimilarity(queryEmbedding, doc.embedding)
+  }));
+
+  scoredDocs.sort((a, b) => b.score - a.score);
+  return scoredDocs.slice(0, 3).map(doc => doc.text).join("\n\n");
 }
